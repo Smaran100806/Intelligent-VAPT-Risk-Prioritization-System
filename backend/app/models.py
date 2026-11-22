@@ -22,7 +22,7 @@ class Asset(Base):
 
     id            = Column(Integer, primary_key=True, index=True)
     name          = Column(String(128), nullable=False)
-    ip_address    = Column(String(45), nullable=True)
+    ip_address    = Column(String(45), nullable=True, unique=True)
     hostname      = Column(String(255), nullable=True)
     asset_type    = Column(String(64), nullable=False)          # web_application | api | host | database | network_device
     business_unit = Column(String(128), nullable=True)
@@ -81,6 +81,7 @@ class Vulnerability(Base):
     # ML outputs
     priority_score        = Column(Float, nullable=True)
     risk_tier             = Column(String(32), nullable=True)    # Critical | High | Medium | Low
+    model_used            = Column(String(32), nullable=True)    # regressor | heuristic
 
     is_remediated         = Column(Boolean, default=False)
     discovered_at         = Column(DateTime(timezone=True), server_default=func.now())
@@ -97,7 +98,8 @@ class VulnerabilityHistory(Base):
     __tablename__ = "vulnerability_history"
 
     id               = Column(Integer, primary_key=True, index=True)
-    cve_id           = Column(String(32), nullable=False, index=True)
+    cve_id           = Column(String(64), nullable=True, index=True)
+    finding_key      = Column(String(256), nullable=True, index=True)  # cve:<id> or title:<normalized>
     asset_id         = Column(Integer, ForeignKey("assets.id"), nullable=True)
     first_seen       = Column(DateTime(timezone=True), server_default=func.now())
     last_seen        = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

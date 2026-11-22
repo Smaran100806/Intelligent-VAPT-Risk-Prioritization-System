@@ -7,7 +7,7 @@ Provides:
   - compute_heuristic_score, get_risk_tier
 """
 
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 # ---------------------------------------------------------------------------
 # Feature Encodings (String -> Integer)
@@ -62,6 +62,38 @@ WEIGHTS = {
 
 SCORE_MIN: float = 5.0
 SCORE_MAX: float = 100.0
+
+# Fixed CVSS subscore factors. Training and inference must use the same values.
+CVSS_EXPLOITABILITY_FACTOR: float = 0.3
+CVSS_IMPACT_FACTOR: float = 0.55
+
+
+def derive_cvss_subscores(cvss_score: float) -> Tuple[float, float]:
+    """Map a base CVSS score to the exploitability and impact features used at inference."""
+    cvss = float(cvss_score or 0.0)
+    exploitability = round(min(max(cvss * CVSS_EXPLOITABILITY_FACTOR, 0.5), 3.9), 2)
+    impact = round(min(max(cvss * CVSS_IMPACT_FACTOR, 1.0), 6.0), 2)
+    return exploitability, impact
+
+
+def encode_feature(
+    raw: Optional[str],
+    mapping: Dict[str, int],
+    default_key: str,
+    label: str,
+) -> Tuple[int, Optional[str]]:
+    """
+    Encode a categorical feature.
+
+    Missing values use default_key quietly. Values outside the map are also
+    encoded as default_key, and the returned warning should be shown to the caller.
+    """
+    if raw is None or str(raw).strip() == "":
+        return mapping[default_key], None
+    key = str(raw).strip().lower()
+    if key not in mapping:
+        return mapping[default_key], f"Unknown {label} '{raw}' scored as {default_key}"
+    return mapping[key], None
 
 
 def compute_heuristic_score(

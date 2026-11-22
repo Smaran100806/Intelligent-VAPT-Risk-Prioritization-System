@@ -9,8 +9,9 @@ Used by:
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, NamedTuple, Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -36,25 +37,41 @@ def _infer_attack_vector(cvss_vector: Optional[str]) -> str:
 
 
 def _infer_vuln_type(title: str) -> str:
+    """Classify from the title using word boundaries so 'resource' is not treated as RCE."""
     t = (title or "").lower()
-    if "sql" in t:
+    if re.search(r"\bsqli\b|\bsql injection\b|\bsql\b", t):
         return "sqli"
-    if "cross-site" in t or "xss" in t:
+    if re.search(r"cross-site|\bxss\b", t):
         return "xss"
-    if "remote code execution" in t or "rce" in t or "buffer overflow" in t:
+    if re.search(r"remote code execution|\brce\b|buffer overflow", t):
         return "rce"
-    if "file read" in t or "lfi" in t or "traversal" in t:
+    if re.search(r"file read|\blfi\b|traversal", t):
         return "lfi"
-    if "ssrf" in t:
+    if re.search(r"\bssrf\b", t):
         return "ssrf"
     return "other"
+
+
+def _finding_key(cve_id: Optional[str], title: str) -> str:
+    cve = (cve_id or "").strip()
+    if cve:
+        return f"cve:{cve}"
+    normalized = " ".join((title or "").lower().split())
+    return f"title:{normalized}"
+
+
+class IngestResult(NamedTuple):
+    scan: Scan
+    scored: int
+    skipped: int
+    warnings: List[str]
 
 
 def ingest_scan(
     scan_meta: Dict[str, Any],
     findings: List[ScannerFinding | Dict[str, Any]],
     db: Session,
-) -> Tuple[Scan, int, int]:
+) -> IngestResult:
     """
     Unified scanner ingestion:
       - Resolves target asset by host IP
@@ -82,13 +99,17 @@ def ingest_scan(
     db.add(scan)
     db.flush()
 
-    # Pre-index all assets by IP and by ID
-    all_assets = db.execute(select(Asset)).scalars().all()
-    ip_to_asset: Dict[str, Asset] = {a.ip_address: a for a in all_assets if a.ip_address}
+    # First asset for an IP wins so duplicate rows cannot hide behind a later insert.
+    all_assets = db.execute(select(Asset).order_by(Asset.id.asc())).scalars().all()
+    ip_to_asset: Dict[str, Asset] = {}
+    for asset_row in all_assets:
+        if asset_row.ip_address and asset_row.ip_address not in ip_to_asset:
+            ip_to_asset[asset_row.ip_address] = asset_row
     id_to_asset: Dict[int, Asset] = {a.id: a for a in all_assets}
 
     scored_count = 0
     skipped_count = 0
+    warnings: List[str] = []
 
     for item in findings:
         if isinstance(item, ScannerFinding):
@@ -116,6 +137,12 @@ def ingest_scan(
                 "criticality": asset.criticality,
                 "exposure": asset.exposure,
             }
+        else:
+            asset_dict = {"criticality": 3, "exposure": "internal"}
+            target = host_ip or (f"asset_id {asset_id}" if asset_id else "unspecified host")
+            warnings.append(
+                f"{title}: no matching asset for {target}; scored as criticality 3 and exposure internal"
+            )
 
         # Context-aware attribute resolution with clean fallbacks
         cvss_vector = f_dict.get("cvss_vector")
@@ -128,29 +155,30 @@ def ingest_scan(
 
         cve_id = f_dict.get("cve_id")
         recurrence = int(f_dict.get("historical_recurrence") or 0)
+        finding_key = _finding_key(cve_id, title)
 
-        # Track recurrence across scans
-        if cve_id:
-            asset_id_val = asset.id if asset else None
-            hist_stmt = select(VulnerabilityHistory).where(
-                VulnerabilityHistory.cve_id == cve_id,
-                VulnerabilityHistory.asset_id == asset_id_val,
+        # Track recurrence for every finding, including those without a CVE.
+        asset_id_val = asset.id if asset else None
+        hist_stmt = select(VulnerabilityHistory).where(
+            VulnerabilityHistory.finding_key == finding_key,
+            VulnerabilityHistory.asset_id == asset_id_val,
+        )
+        hist = db.execute(hist_stmt).scalar_one_or_none()
+        if hist:
+            hist.recurrence_count += 1
+            hist.last_seen = datetime.now(timezone.utc)
+            recurrence = hist.recurrence_count
+        else:
+            hist = VulnerabilityHistory(
+                cve_id=(cve_id or None),
+                finding_key=finding_key,
+                asset_id=asset_id_val,
+                first_seen=datetime.now(timezone.utc),
+                last_seen=datetime.now(timezone.utc),
+                recurrence_count=max(recurrence, 1),
             )
-            hist = db.execute(hist_stmt).scalar_one_or_none()
-            if hist:
-                hist.recurrence_count += 1
-                hist.last_seen = datetime.now(timezone.utc)
-                recurrence = hist.recurrence_count
-            else:
-                hist = VulnerabilityHistory(
-                    cve_id=cve_id,
-                    asset_id=asset_id_val,
-                    first_seen=datetime.now(timezone.utc),
-                    last_seen=datetime.now(timezone.utc),
-                    recurrence_count=max(recurrence, 1),
-                )
-                db.add(hist)
-                recurrence = hist.recurrence_count
+            db.add(hist)
+            recurrence = hist.recurrence_count
 
         vuln_features = {
             "cvss_score": f_dict.get("cvss_score"),
@@ -164,6 +192,8 @@ def ingest_scan(
         }
 
         ml_eval = score_vulnerability(vuln_features, asset_dict)
+        for warning in ml_eval.get("warnings") or []:
+            warnings.append(f"{title}: {warning}")
 
         vuln = Vulnerability(
             scan_id=scan.id,
@@ -183,10 +213,11 @@ def ingest_scan(
             days_since_last_scan=days_since_last_scan,
             priority_score=ml_eval["priority_score"],
             risk_tier=ml_eval["risk_tier"],
+            model_used=ml_eval.get("model_used"),
             is_remediated=False,
         )
         db.add(vuln)
         scored_count += 1
 
     db.commit()
-    return scan, scored_count, skipped_count
+    return IngestResult(scan, scored_count, skipped_count, warnings)

@@ -22,6 +22,9 @@ class _Base(BaseModel):
 # Asset
 # ---------------------------------------------------------------------------
 
+ExposureKind = Literal["internet-facing", "dmz", "internal", "isolated"]
+
+
 class AssetCreate(_Base):
     name: str = Field(..., min_length=1, max_length=128)
     ip_address: Optional[str] = None
@@ -29,7 +32,7 @@ class AssetCreate(_Base):
     asset_type: str = Field(..., description="web_application | api | host | database | network_device")
     business_unit: Optional[str] = None
     criticality: int = Field(default=3, ge=1, le=5)
-    exposure: str = Field(default="internal", description="internet-facing | dmz | internal | isolated")
+    exposure: ExposureKind = "internal"
     owner: Optional[str] = None
 
 
@@ -42,14 +45,11 @@ class AssetResponse(AssetCreate):
 # Scan
 # ---------------------------------------------------------------------------
 
-class ScanCreate(_Base):
+class ScanResponse(_Base):
     scanner_name: str
     scan_date: datetime
     target_range: Optional[str] = None
     status: str = "completed"
-
-
-class ScanResponse(ScanCreate):
     id: int
     created_at: datetime
 
@@ -105,6 +105,7 @@ class VulnerabilityResponse(VulnerabilityCreate):
     asset_exposure: Optional[str] = None
     priority_score: Optional[float] = None
     risk_tier: Optional[Literal["Critical", "High", "Medium", "Low"]] = None
+    model_used: Optional[Literal["regressor", "heuristic"]] = None
     is_remediated: bool
     discovered_at: datetime
     explainability: Optional[Dict[str, Any]] = None
@@ -120,12 +121,6 @@ class ScanMetadata(_Base):
     scan_date: Optional[datetime] = None
     policy: Optional[str] = None
     target: Optional[str] = None
-
-
-class RawScanDocument(_Base):
-    """Raw scanner export shape: {scan_metadata: {...}, findings: [...]}"""
-    scan_metadata: Optional[ScanMetadata] = Field(default_factory=ScanMetadata)
-    findings: List[ScannerFinding]
 
 
 class ScanUploadPayload(_Base):
@@ -144,6 +139,7 @@ class ScanUploadResponse(_Base):
     total_findings: int
     scored: int
     skipped: int
+    warnings: List[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
