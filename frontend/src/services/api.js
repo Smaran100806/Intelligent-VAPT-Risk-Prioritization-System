@@ -1,10 +1,5 @@
 /**
  * api.js — Centralised Axios API client for the VAPT backend.
- *
- * All component-level data fetching imports from here so the base URL
- * and auth headers are configured in one place.
- *
- * Full endpoint implementations to be added in the Frontend milestone.
  */
 
 import axios from "axios";
@@ -20,7 +15,7 @@ const apiClient = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
-  timeout: 15_000, // 15 s
+  timeout: 30_000,
 });
 
 // ---------------------------------------------------------------------------
@@ -46,7 +41,6 @@ apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     if (error.response?.status === 401) {
-      // TODO: attempt token refresh, then retry once
       localStorage.removeItem("access_token");
       window.location.href = "/login";
     }
@@ -55,39 +49,75 @@ apiClient.interceptors.response.use(
 );
 
 // ---------------------------------------------------------------------------
-// Endpoint helpers (stubs — implement in Frontend milestone)
+// Dashboard
 // ---------------------------------------------------------------------------
 
-/** Auth */
-export const authAPI = {
-  login:  (credentials) => apiClient.post("/api/auth/login",  credentials),
-  logout: ()            => apiClient.post("/api/auth/logout"),
-  me:     ()            => apiClient.get("/api/auth/me"),
+export const dashboardAPI = {
+  /** GET /api/dashboard */
+  getStats: () => apiClient.get("/api/dashboard"),
 };
 
-/** Asset management */
-export const assetsAPI = {
-  list:   (params)  => apiClient.get("/api/assets", { params }),
-  get:    (id)      => apiClient.get(`/api/assets/${id}`),
-  create: (payload) => apiClient.post("/api/assets", payload),
-  update: (id, payload) => apiClient.put(`/api/assets/${id}`, payload),
-  delete: (id)      => apiClient.delete(`/api/assets/${id}`),
-};
+// ---------------------------------------------------------------------------
+// Vulnerabilities
+// ---------------------------------------------------------------------------
 
-/** Vulnerabilities */
 export const vulnsAPI = {
-  list:   (params)  => apiClient.get("/api/vulns", { params }),
-  get:    (id)      => apiClient.get(`/api/vulns/${id}`),
-  create: (payload) => apiClient.post("/api/vulns", payload),
-  patch:  (id, payload) => apiClient.patch(`/api/vulns/${id}`, payload),
-  importScan: (payload) => apiClient.post("/api/vulns/import", payload),
+  /** GET /api/vulnerabilities?risk_tier=...&asset=...&remediated=...&page=...&limit=... */
+  list: (params) => apiClient.get("/api/vulnerabilities", { params }),
+  /** GET /api/vulnerabilities/:id */
+  get: (id) => apiClient.get(`/api/vulnerabilities/${id}`),
+  /** PATCH /api/vulnerabilities/:id/remediate */
+  remediate: (id) => apiClient.patch(`/api/vulnerabilities/${id}/remediate`),
 };
 
-/** Risk scores */
-export const riskAPI = {
-  score:     (vulnId)  => apiClient.get(`/api/vulns/${vulnId}/risk-score`),
-  dashboard: ()        => apiClient.get("/api/reports/dashboard"),
-  topRisks:  (limit = 10) => apiClient.get("/api/reports/top-risks", { params: { limit } }),
+// ---------------------------------------------------------------------------
+// Scans
+// ---------------------------------------------------------------------------
+
+export const scansAPI = {
+  /** POST /api/scans/upload */
+  upload: (payload) => apiClient.post("/api/scans/upload", payload),
+  /** GET /api/scans */
+  list: () => apiClient.get("/api/scans"),
+};
+
+// ---------------------------------------------------------------------------
+// Assets
+// ---------------------------------------------------------------------------
+
+export const assetsAPI = {
+  /** GET /api/assets */
+  list: (params) => apiClient.get("/api/assets", { params }),
+  /** GET /api/assets/:id */
+  get: (id) => apiClient.get(`/api/assets/${id}`),
+};
+
+// ---------------------------------------------------------------------------
+// Comparison (CVSS vs ML)
+// ---------------------------------------------------------------------------
+
+export const comparisonAPI = {
+  /** GET /api/comparison/cvss-vs-ml */
+  getCvssVsMl: () => apiClient.get("/api/comparison/cvss-vs-ml"),
+};
+
+// ---------------------------------------------------------------------------
+// Seed
+// ---------------------------------------------------------------------------
+
+export const seedAPI = {
+  /** POST /api/seed */
+  seed: () => apiClient.post("/api/seed"),
+};
+
+// ---------------------------------------------------------------------------
+// Auth (kept for compatibility)
+// ---------------------------------------------------------------------------
+
+export const authAPI = {
+  login: (credentials) => apiClient.post("/api/auth/login", credentials),
+  logout: () => apiClient.post("/api/auth/logout"),
+  me: () => apiClient.get("/api/auth/me"),
 };
 
 export default apiClient;
