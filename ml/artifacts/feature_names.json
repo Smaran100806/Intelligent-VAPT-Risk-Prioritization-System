@@ -1,0 +1,14 @@
+[
+  "cvss_score",
+  "cvss_exploitability",
+  "cvss_impact",
+  "asset_criticality",
+  "exposure_encoded",
+  "vuln_type_encoded",
+  "exploit_available",
+  "in_threat_feed",
+  "auth_required",
+  "attack_vector_encoded",
+  "historical_recurrence",
+  "days_since_last_scan"
+]
