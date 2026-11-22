@@ -49,7 +49,7 @@ def list_vulnerabilities(
         stmt = stmt.limit(limit)
 
     vulns = db.execute(stmt).scalars().all()
-    return [vuln_to_response(v, include_explainability=False) for v in vulns]
+    return [vuln_to_response(v, include_explainability=True) for v in vulns]
 
 
 @router.get("/{vuln_id}", response_model=VulnerabilityResponse)

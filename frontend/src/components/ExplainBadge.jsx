@@ -9,7 +9,8 @@ export default function ExplainBadge({ factors }) {
 
   if (!factors || Object.keys(factors).length === 0) return null;
 
-  const entries = Object.entries(factors).filter(([, v]) => v !== 0);
+  const entries = Object.entries(factors).filter(
+  ([k, v]) => typeof v === "number" && v !== 0 && k !== "total_score");
   if (entries.length === 0) return null;
 
   return (

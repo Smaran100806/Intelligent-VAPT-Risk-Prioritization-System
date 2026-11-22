@@ -76,14 +76,15 @@ async def upload_scan(
             detail="Payload contains no vulnerabilities or findings",
         )
 
-    scan, scored, skipped = ingest_scan(meta, findings_list, db)
+    result = ingest_scan(meta, findings_list, db)
 
-    return ScanUploadResponse(
-        scan_id=scan.id,
-        total_findings=len(findings_list),
-        scored=scored,
-        skipped=skipped,
-    )
+return ScanUploadResponse(
+    scan_id=result.scan.id,
+    total_findings=len(findings_list),
+    scored=result.scored,
+    skipped=result.skipped,
+    warnings=result.warnings,
+)
 
 
 @router.get("/{scan_id}", response_model=ScanResponse)

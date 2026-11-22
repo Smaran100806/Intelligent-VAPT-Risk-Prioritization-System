@@ -95,7 +95,8 @@ def test_raw_scanner_ingestion_and_parity():
             }
         ]
 
-        scan, scored, skipped = ingest_scan(raw_meta, findings, db)
+        result = ingest_scan(raw_meta, findings, db)
+        scan, scored, skipped = result.scan, result.scored, result.skipped
         assert scored == 1
         assert skipped == 0
 

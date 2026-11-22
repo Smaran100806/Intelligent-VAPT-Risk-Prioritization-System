@@ -9,6 +9,7 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict
+from unittest import result
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -122,7 +123,8 @@ def seed_database(reset: bool = False, _auth: bool = Depends(verify_api_key)) ->
         meta = scan_doc.get("scan_metadata", {})
         findings = scan_doc.get("findings", [])
 
-        scan, findings_scored, _ = ingest_scan(meta, findings, db)
+        result = ingest_scan(meta, findings, db)
+        scan, findings_scored = result.scan, result.scored
 
         return {
             "message": "Seed data loaded successfully.",

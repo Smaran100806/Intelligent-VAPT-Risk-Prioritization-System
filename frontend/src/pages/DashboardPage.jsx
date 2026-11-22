@@ -108,7 +108,7 @@ export default function DashboardPage() {
           title="Noise Deprioritized"
           value={stats ? `${stats.noise_deprioritized_pct}%` : (loading ? "..." : "0%")}
           subtitle="Low/Medium severity < 30 score"
-          color="emerald"
+          color="green"
         />
       </div>
 
@@ -151,7 +151,7 @@ export default function DashboardPage() {
           </div>
           <div className="mt-4 pt-3 border-t border-gray-800 text-xs text-gray-400 flex justify-between items-center">
             <span>Model Version: <strong>v{modelMeta?.version ?? "1.0.0"} (Gradient Boosting)</strong></span>
-            <span>Test Accuracy: <strong>{modelMeta ? (modelMeta.test_accuracy * 100).toFixed(1) : "94.2"}%</strong></span>
+            <span>Tier Agreement: <strong>{modelMeta?.reported_tier_agreement != null ? (modelMeta.reported_tier_agreement * 100).toFixed(1) + "%" : "N/A"}</strong></span>
           </div>
         </div>
       </div>
