@@ -1,0 +1,73 @@
+[
+  {
+    "_comment": "Asset inventory seed data — imported on first run to populate the assets table",
+    "id": 1,
+    "name": "prod-web-01",
+    "ip_address": "192.168.1.45",
+    "hostname": "prod-web-01.internal.corp",
+    "asset_type": "web_application",
+    "business_unit": "E-Commerce",
+    "criticality": 5,
+    "owner": "alice@corp.com"
+  },
+  {
+    "id": 2,
+    "name": "prod-api-gateway",
+    "ip_address": "192.168.1.60",
+    "hostname": "api-gw.internal.corp",
+    "asset_type": "api",
+    "business_unit": "Platform",
+    "criticality": 5,
+    "owner": "bob@corp.com"
+  },
+  {
+    "id": 3,
+    "name": "corp-dc-01",
+    "ip_address": "192.168.1.10",
+    "hostname": "dc01.internal.corp",
+    "asset_type": "network_device",
+    "business_unit": "IT Infrastructure",
+    "criticality": 5,
+    "owner": "sysadmin@corp.com"
+  },
+  {
+    "id": 4,
+    "name": "corp-mail-server",
+    "ip_address": "192.168.1.22",
+    "hostname": "mail.internal.corp",
+    "asset_type": "host",
+    "business_unit": "IT Infrastructure",
+    "criticality": 4,
+    "owner": "sysadmin@corp.com"
+  },
+  {
+    "id": 5,
+    "name": "vpn-gateway",
+    "ip_address": "10.0.0.1",
+    "hostname": "vpn.corp.com",
+    "asset_type": "network_device",
+    "business_unit": "IT Infrastructure",
+    "criticality": 5,
+    "owner": "netops@corp.com"
+  },
+  {
+    "id": 6,
+    "name": "dev-web-staging",
+    "ip_address": "10.10.1.100",
+    "hostname": "staging.internal.corp",
+    "asset_type": "web_application",
+    "business_unit": "Engineering",
+    "criticality": 2,
+    "owner": "devops@corp.com"
+  },
+  {
+    "id": 7,
+    "name": "analytics-db",
+    "ip_address": "192.168.2.50",
+    "hostname": "analytics-db.internal.corp",
+    "asset_type": "database",
+    "business_unit": "Data & Analytics",
+    "criticality": 4,
+    "owner": "data-team@corp.com"
+  }
+]
