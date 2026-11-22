@@ -50,7 +50,6 @@ async def upload_scan(
     and wrapped payloads:
       { "scanner_name": "...", "vulnerabilities": [...] }
     """
-    # Enforce size ceiling
     body = await request.body()
     if len(body) > MAX_UPLOAD_BYTES:
         raise HTTPException(
@@ -58,7 +57,6 @@ async def upload_scan(
             detail="Scan payload exceeds 5 MB size limit",
         )
 
-    # Adapter to normalize metadata & findings list
     meta: Dict[str, Any] = {}
     if payload.scan_metadata:
         meta = payload.scan_metadata.model_dump()
@@ -78,13 +76,13 @@ async def upload_scan(
 
     result = ingest_scan(meta, findings_list, db)
 
-return ScanUploadResponse(
-    scan_id=result.scan.id,
-    total_findings=len(findings_list),
-    scored=result.scored,
-    skipped=result.skipped,
-    warnings=result.warnings,
-)
+    return ScanUploadResponse(
+        scan_id=result.scan.id,
+        total_findings=len(findings_list),
+        scored=result.scored,
+        skipped=result.skipped,
+        warnings=result.warnings,
+    )
 
 
 @router.get("/{scan_id}", response_model=ScanResponse)
