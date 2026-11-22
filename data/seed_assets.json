@@ -1,73 +1,134 @@
 [
   {
-    "_comment": "Asset inventory seed data — imported on first run to populate the assets table",
     "id": 1,
-    "name": "prod-web-01",
-    "ip_address": "192.168.1.45",
-    "hostname": "prod-web-01.internal.corp",
-    "asset_type": "web_application",
-    "business_unit": "E-Commerce",
+    "name": "prod-payment-db",
+    "ip_address": "192.168.1.100",
+    "hostname": "payment-db.prod.corp",
+    "asset_type": "database",
+    "business_unit": "Payments & Billing",
     "criticality": 5,
-    "owner": "alice@corp.com"
+    "exposure": "internet-facing",
+    "owner": "alice.fintech@corp.internal"
   },
   {
     "id": 2,
-    "name": "prod-api-gateway",
-    "ip_address": "192.168.1.60",
-    "hostname": "api-gw.internal.corp",
-    "asset_type": "api",
-    "business_unit": "Platform",
-    "criticality": 5,
-    "owner": "bob@corp.com"
+    "name": "sandbox-dev-01",
+    "ip_address": "10.0.99.15",
+    "hostname": "sandbox-node-01.dev.corp",
+    "asset_type": "host",
+    "business_unit": "R&D / Sandbox",
+    "criticality": 1,
+    "exposure": "isolated",
+    "owner": "bob.rnd@corp.internal"
   },
   {
     "id": 3,
-    "name": "corp-dc-01",
-    "ip_address": "192.168.1.10",
-    "hostname": "dc01.internal.corp",
-    "asset_type": "network_device",
-    "business_unit": "IT Infrastructure",
-    "criticality": 5,
-    "owner": "sysadmin@corp.com"
+    "name": "customer-portal-web",
+    "ip_address": "192.168.1.50",
+    "hostname": "portal.company.com",
+    "asset_type": "web_application",
+    "business_unit": "Customer Experience",
+    "criticality": 4,
+    "exposure": "internet-facing",
+    "owner": "web-team@corp.internal"
   },
   {
     "id": 4,
-    "name": "corp-mail-server",
-    "ip_address": "192.168.1.22",
-    "hostname": "mail.internal.corp",
-    "asset_type": "host",
-    "business_unit": "IT Infrastructure",
-    "criticality": 4,
-    "owner": "sysadmin@corp.com"
+    "name": "auth-api-gateway",
+    "ip_address": "192.168.1.55",
+    "hostname": "auth.corp.internal",
+    "asset_type": "api",
+    "business_unit": "Security Architecture",
+    "criticality": 5,
+    "exposure": "dmz",
+    "owner": "secops@corp.internal"
   },
   {
     "id": 5,
-    "name": "vpn-gateway",
-    "ip_address": "10.0.0.1",
-    "hostname": "vpn.corp.com",
+    "name": "core-firewall-edge",
+    "ip_address": "192.168.1.1",
+    "hostname": "fw-edge-01.corp",
     "asset_type": "network_device",
     "business_unit": "IT Infrastructure",
     "criticality": 5,
-    "owner": "netops@corp.com"
+    "exposure": "internet-facing",
+    "owner": "netops@corp.internal"
   },
   {
     "id": 6,
-    "name": "dev-web-staging",
-    "ip_address": "10.10.1.100",
-    "hostname": "staging.internal.corp",
+    "name": "internal-jira-server",
+    "ip_address": "10.10.20.14",
+    "hostname": "jira.internal.corp",
     "asset_type": "web_application",
-    "business_unit": "Engineering",
+    "business_unit": "IT Operations",
     "criticality": 2,
-    "owner": "devops@corp.com"
+    "exposure": "internal",
+    "owner": "it-helpdesk@corp.internal"
   },
   {
     "id": 7,
-    "name": "analytics-db",
-    "ip_address": "192.168.2.50",
-    "hostname": "analytics-db.internal.corp",
+    "name": "staging-api-v2",
+    "ip_address": "10.10.30.22",
+    "hostname": "staging-api.internal.corp",
+    "asset_type": "api",
+    "business_unit": "Engineering",
+    "criticality": 2,
+    "exposure": "internal",
+    "owner": "devops@corp.internal"
+  },
+  {
+    "id": 8,
+    "name": "hr-workforce-db",
+    "ip_address": "10.10.40.8",
+    "hostname": "hr-db.internal.corp",
     "asset_type": "database",
-    "business_unit": "Data & Analytics",
+    "business_unit": "Human Resources",
+    "criticality": 3,
+    "exposure": "internal",
+    "owner": "hr-systems@corp.internal"
+  },
+  {
+    "id": 9,
+    "name": "corp-mail-relay",
+    "ip_address": "192.168.1.25",
+    "hostname": "smtp.company.com",
+    "asset_type": "host",
+    "business_unit": "IT Communications",
+    "criticality": 3,
+    "exposure": "dmz",
+    "owner": "sysadmin@corp.internal"
+  },
+  {
+    "id": 10,
+    "name": "analytics-spark-cluster",
+    "ip_address": "10.20.5.12",
+    "hostname": "spark-master.internal.corp",
+    "asset_type": "host",
+    "business_unit": "Data Science",
+    "criticality": 3,
+    "exposure": "isolated",
+    "owner": "data-eng@corp.internal"
+  },
+  {
+    "id": 11,
+    "name": "vpn-concentrator-sg",
+    "ip_address": "192.168.1.5",
+    "hostname": "vpn-gw.company.com",
+    "asset_type": "network_device",
+    "business_unit": "Enterprise Security",
     "criticality": 4,
-    "owner": "data-team@corp.com"
+    "exposure": "internet-facing",
+    "owner": "netsec@corp.internal"
+  },
+  {
+    "id": 12,
+    "name": "legacy-archive-nas",
+    "ip_address": "10.0.99.200",
+    "hostname": "nas-cold-archive.dev.corp",
+    "asset_type": "host",
+    "business_unit": "Compliance",
+    "criticality": 2,
+    "exposure": "isolated",
+    "owner": "records@corp.internal"
   }
 ]
