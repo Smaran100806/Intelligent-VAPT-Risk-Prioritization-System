@@ -1,6 +1,7 @@
 {
-  "rmse": 1.712,
-  "mae": 1.346,
-  "r2": 0.9875,
-  "accuracy": 0.9608
+  "test_rmse": 2.207,
+  "test_mae": 1.743,
+  "test_r2": 0.9778,
+  "test_accuracy": 0.942,
+  "n_test_samples": 500
 }

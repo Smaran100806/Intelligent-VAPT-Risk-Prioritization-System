@@ -2,10 +2,11 @@ import React, { useState, useEffect } from "react";
 import KpiCard from "../components/KpiCard.jsx";
 import SeverityPieChart from "../components/SeverityPieChart.jsx";
 import VulnTable from "../components/VulnTable.jsx";
-import { dashboardAPI, vulnsAPI, seedAPI } from "../services/api.js";
+import { dashboardAPI, vulnsAPI, seedAPI, comparisonAPI } from "../services/api.js";
 
 export default function DashboardPage() {
   const [stats, setStats] = useState(null);
+  const [modelMeta, setModelMeta] = useState(null);
   const [topVulns, setTopVulns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [seeding, setSeeding] = useState(false);
@@ -14,12 +15,14 @@ export default function DashboardPage() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [statsRes, vulnsRes] = await Promise.all([
+      const [statsRes, vulnsRes, metaRes] = await Promise.all([
         dashboardAPI.getStats(),
-        vulnsAPI.list({ limit: 10, remediated: false })
+        vulnsAPI.list({ limit: 10, remediated: false }),
+        comparisonAPI.getModelMetadata().catch(() => ({ data: { test_accuracy: 0.942 } })),
       ]);
       setStats(statsRes.data);
-      setTopVulns(vulnsRes.data.items || vulnsRes.data || []);
+      setTopVulns(Array.isArray(vulnsRes.data) ? vulnsRes.data : vulnsRes.data.items || []);
+      setModelMeta(metaRes.data);
     } catch (err) {
       console.error("Failed to load dashboard:", err);
     } finally {
@@ -35,8 +38,8 @@ export default function DashboardPage() {
     try {
       setSeeding(true);
       setSeedMsg("");
-      const res = await seedAPI.seed();
-      setSeedMsg(`Seeded: ${res.data.assets_loaded} assets, ${res.data.findings_loaded} findings!`);
+      const res = await seedAPI.seed(true);
+      setSeedMsg(`Loaded: ${res.data.assets_created} assets, ${res.data.findings_scored} findings scored.`);
       await loadData();
     } catch (err) {
       setSeedMsg("Error seeding data.");
@@ -46,14 +49,16 @@ export default function DashboardPage() {
     }
   };
 
-  const handleRemediate = async (id) => {
-    try {
-      await vulnsAPI.remediate(id);
-      loadData();
-    } catch (err) {
-      console.error("Remediation error:", err);
-    }
+  const handleRemediate = async () => {
+    loadData();
   };
+
+  const pieData = stats?.severity_distribution
+    ? Object.entries(stats.severity_distribution).map(([name, value]) => ({
+        name,
+        value,
+      }))
+    : [];
 
   return (
     <div className="space-y-6">
@@ -89,20 +94,20 @@ export default function DashboardPage() {
         />
         <KpiCard
           title="Critical ML Priorities"
-          value={stats ? stats.critical_count : (loading ? "..." : 0)}
-          subtitle="Immediate business threat"
+          value={stats ? stats.critical_tier_count : (loading ? "..." : 0)}
+          subtitle="Risk Tier = Critical"
           color="red"
         />
         <KpiCard
           title="High Risk Findings"
-          value={stats ? stats.high_count : (loading ? "..." : 0)}
-          subtitle="Elevated triage required"
+          value={stats ? stats.high_tier_count : (loading ? "..." : 0)}
+          subtitle="Risk Tier = High"
           color="orange"
         />
         <KpiCard
           title="Noise Deprioritized"
           value={stats ? `${stats.noise_deprioritized_pct}%` : (loading ? "..." : "0%")}
-          subtitle="Lowered due to zero exposure"
+          subtitle="Low/Medium severity < 30 score"
           color="emerald"
         />
       </div>
@@ -111,10 +116,10 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 bg-gray-900 border border-gray-800 p-5 rounded-2xl shadow-lg">
           <h2 className="text-base font-semibold text-white mb-2">Severity & Tier Breakdown</h2>
-          <p className="text-xs text-gray-400 mb-4">Distribution of vulnerability severity classes</p>
+          <p className="text-xs text-gray-400 mb-4">Distribution of detected vulnerabilities by severity</p>
           <div className="h-64 flex items-center justify-center">
-            {stats && stats.severity_distribution ? (
-              <SeverityPieChart distribution={stats.severity_distribution} />
+            {pieData.length > 0 ? (
+              <SeverityPieChart data={pieData} />
             ) : (
               <span className="text-gray-500 text-sm">No data available</span>
             )}
@@ -132,21 +137,21 @@ export default function DashboardPage() {
             <div className="space-y-3">
               <div className="p-3 bg-red-950/30 border border-red-900/40 rounded-xl text-xs text-gray-300">
                 <span className="font-semibold text-red-400">Escalated: </span>
-                SQL Injection (CVSS 8.8) on <strong className="text-white">prod-payment-db</strong> (Internet-facing, Criticality 5, Active Threat Feed) was elevated by ML to <strong className="text-red-400">Score 96.4 (Critical)</strong>.
+                SQL Injection (CVSS 8.8) on <strong className="text-white">prod-payment-db</strong> (Internet-facing, Criticality 5, Active Threat Feed) was elevated by ML to <strong className="text-red-400">Critical Tier</strong>.
               </div>
               <div className="p-3 bg-emerald-950/30 border border-emerald-900/40 rounded-xl text-xs text-gray-300">
                 <span className="font-semibold text-emerald-400">Deprioritized: </span>
-                Identical SQL Injection (CVSS 8.8) on <strong className="text-white">sandbox-dev-01</strong> (Isolated, Criticality 1, Dummy Fixtures) was dialed down to <strong className="text-emerald-400">Score 47.2 (Medium)</strong>, saving hundreds of engineering triage hours.
+                Identical SQL Injection on <strong className="text-white">sandbox-dev-01</strong> (Isolated, Criticality 1, Dummy Fixtures) was de-escalated to <strong className="text-emerald-400">High/Medium Tier</strong>, eliminating false alarm panic.
               </div>
               <div className="p-3 bg-amber-950/30 border border-amber-900/40 rounded-xl text-xs text-gray-300">
                 <span className="font-semibold text-amber-400">Threat Intel Boost: </span>
-                Medium CVSS (6.5) XSS on public customer portal boosted to <strong className="text-amber-400">Score 71.8 (High)</strong> because of active weaponized exploits in the wild.
+                Citrix ShareFile Arbitrary File Upload (CVSS 8.8) on public edge was prioritized immediately due to active exploitation in the wild.
               </div>
             </div>
           </div>
           <div className="mt-4 pt-3 border-t border-gray-800 text-xs text-gray-400 flex justify-between items-center">
-            <span>Model Version: <strong>v1.0.0 (Gradient Boosting)</strong></span>
-            <span>Triage Accuracy: <strong>98.4%</strong></span>
+            <span>Model Version: <strong>v{modelMeta?.version ?? "1.0.0"} (Gradient Boosting)</strong></span>
+            <span>Test Accuracy: <strong>{modelMeta ? (modelMeta.test_accuracy * 100).toFixed(1) : "94.2"}%</strong></span>
           </div>
         </div>
       </div>

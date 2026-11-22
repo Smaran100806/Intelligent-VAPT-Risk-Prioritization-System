@@ -1,22 +1,22 @@
 {
   "version": "1.0.0",
-  "trained_at": "2026-11-22T07:39:25.895928+00:00",
+  "trained_at": "2026-11-22T08:16:29.291363+00:00",
   "n_samples": 2500,
-  "test_rmse": 2.204,
+  "test_rmse": 2.207,
   "test_r2": 0.9778,
-  "test_accuracy": 0.912,
+  "test_accuracy": 0.942,
   "feature_importances": {
-    "cvss_score": 0.4529,
-    "asset_criticality": 0.133,
-    "exploit_available": 0.1231,
-    "exposure_encoded": 0.1104,
-    "in_threat_feed": 0.0631,
-    "cvss_impact": 0.0578,
-    "historical_recurrence": 0.0189,
-    "attack_vector_encoded": 0.0173,
+    "cvss_score": 0.4526,
+    "asset_criticality": 0.1331,
+    "exploit_available": 0.1232,
+    "exposure_encoded": 0.1103,
+    "in_threat_feed": 0.0632,
+    "cvss_impact": 0.0581,
+    "historical_recurrence": 0.0188,
+    "attack_vector_encoded": 0.0172,
     "auth_required": 0.0128,
     "cvss_exploitability": 0.0101,
     "days_since_last_scan": 0.0005,
-    "vuln_type_encoded": 0.0001
+    "vuln_type_encoded": 0.0002
   }
 }

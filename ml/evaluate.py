@@ -1,5 +1,5 @@
 """
-evaluate.py — Evaluate the trained VAPT risk model and compare ML vs CVSS-only sorting.
+evaluate.py — Evaluate the trained VAPT risk model strictly on held-out test split.
 """
 
 import json
@@ -8,6 +8,9 @@ from pathlib import Path
 import joblib
 import pandas as pd
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score, accuracy_score, classification_report
+from sklearn.model_selection import train_test_split
+
+from scoring_weights import get_risk_tier
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s — %(message)s")
 logger = logging.getLogger(__name__)
@@ -15,17 +18,15 @@ logger = logging.getLogger(__name__)
 ARTIFACTS_DIR = Path(__file__).parent / "artifacts"
 DATA_PATH = Path(__file__).parent.parent / "data" / "synthetic_vapt_training.csv"
 
+
 def evaluate_models():
     reg_path = ARTIFACTS_DIR / "risk_regressor.pkl"
-    cls_path = ARTIFACTS_DIR / "risk_classifier.pkl"
-
-    if not reg_path.exists() or not cls_path.exists():
-        logger.error("Model artifacts not found. Please run ml/train_model.py first.")
+    if not reg_path.exists():
+        logger.error("Model artifact not found at %s. Please run ml/train_model.py first.", reg_path)
         return
 
-    logger.info("Loading model pipelines...")
+    logger.info("Loading model regressor...")
     regressor = joblib.load(reg_path)
-    classifier = joblib.load(cls_path)
 
     df = pd.read_csv(DATA_PATH)
     with open(ARTIFACTS_DIR / "feature_names.json", "r") as f:
@@ -33,59 +34,44 @@ def evaluate_models():
 
     X = df[feature_cols]
     y_reg = df["priority_score"]
-    y_cls = df["risk_tier"]
 
-    # 1. Regression Metrics
-    preds_reg = regressor.predict(X)
-    rmse = mean_squared_error(y_reg, preds_reg) ** 0.5
-    mae = mean_absolute_error(y_reg, preds_reg)
-    r2 = r2_score(y_reg, preds_reg)
+    # Strictly evaluate on held-out 20% test split with random_state=42
+    _, X_test, _, y_test = train_test_split(X, y_reg, test_size=0.2, random_state=42)
 
-    # 2. Classification Metrics
-    preds_cls = classifier.predict(X)
-    acc = accuracy_score(y_cls, preds_cls)
+    preds_reg = regressor.predict(X_test)
+    rmse = mean_squared_error(y_test, preds_reg) ** 0.5
+    mae = mean_absolute_error(y_test, preds_reg)
+    r2 = r2_score(y_test, preds_reg)
+
+    actual_tiers = [get_risk_tier(s) for s in y_test]
+    pred_tiers = [get_risk_tier(s) for s in preds_reg]
+    acc = accuracy_score(actual_tiers, pred_tiers)
 
     print("\n" + "="*60)
-    print("      INTELLIGENT VAPT RISK MODEL EVALUATION REPORT")
+    print("      INTELLIGENT VAPT RISK MODEL EVALUATION REPORT (TEST SPLIT)")
     print("="*60)
-    print(f"Total Samples Evaluated: {len(df)}")
+    print(f"Test Samples Evaluated: {len(X_test)}")
     print(f"Regression RMSE       : {rmse:.3f}")
     print(f"Regression MAE        : {mae:.3f}")
     print(f"Regression R² Score   : {r2:.4f}")
-    print(f"Classifier Accuracy   : {acc*100:.2f}%")
-    print("\nClassification Report:")
-    print(classification_report(y_cls, preds_cls))
+    print(f"Risk Tier Accuracy    : {acc*100:.2f}%")
+    print("\nClassification Report (Risk Tiers):")
+    print(classification_report(actual_tiers, pred_tiers))
 
-    # 3. Side-by-side CVSS vs ML comparison demonstration on 10 realistic samples
-    sample_df = df.sample(10, random_state=101).copy()
-    sample_df["predicted_ml_score"] = regressor.predict(sample_df[feature_cols]).round(1)
-    
-    cvss_ranked = sample_df.sort_values(by="cvss_score", ascending=False).reset_index(drop=True)
-    cvss_ranked["cvss_rank"] = cvss_ranked.index + 1
-    
-    ml_ranked = cvss_ranked.sort_values(by="predicted_ml_score", ascending=False).reset_index(drop=True)
-    ml_ranked["ml_rank"] = ml_ranked.index + 1
-    ml_ranked["rank_delta"] = ml_ranked["cvss_rank"] - ml_ranked["ml_rank"]
-
-    print("\n" + "="*80)
-    print("DEMO: STATIC CVSS VS CONTEXT-AWARE ML RANK RE-ORDERING")
-    print("="*80)
-    comparison_view = ml_ranked[[
-        "cvss_rank", "ml_rank", "rank_delta", "cvss_score", "predicted_ml_score",
-        "asset_criticality", "exposure_encoded", "exploit_available"
-    ]]
-    print(comparison_view.to_string(index=False))
-    print("\nNote: Positive rank_delta indicates ML escalated the vulnerability above its CVSS rank.")
-
-    # Save evaluation summary
     report = {
-        "rmse": round(rmse, 3),
-        "mae": round(mae, 3),
-        "r2": round(r2, 4),
-        "accuracy": round(acc, 4),
+        "test_rmse": round(rmse, 3),
+        "test_mae": round(mae, 3),
+        "test_r2": round(r2, 4),
+        "test_accuracy": round(acc, 4),
+        "n_test_samples": len(X_test),
     }
-    with open(ARTIFACTS_DIR / "evaluation_report.json", "w") as f:
+
+    report_path = ARTIFACTS_DIR / "evaluation_report.json"
+    with open(report_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
+
+    logger.info("Written test evaluation metrics -> %s", report_path)
+
 
 if __name__ == "__main__":
     evaluate_models()

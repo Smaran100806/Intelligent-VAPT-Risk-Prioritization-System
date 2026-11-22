@@ -5,7 +5,7 @@ schemas.py — Pydantic v2 request/response schemas.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -59,12 +59,12 @@ class ScanResponse(ScanCreate):
 # ---------------------------------------------------------------------------
 
 class VulnerabilityCreate(_Base):
-    scan_id: Optional[int] = None          # set by upload endpoint
+    scan_id: Optional[int] = None
     asset_id: Optional[int] = None
     cve_id: Optional[str] = None
     title: str
     description: Optional[str] = None
-    severity: str
+    severity: Literal["critical", "high", "medium", "low", "informational"] = "medium"
     cvss_score: Optional[float] = Field(default=None, ge=0.0, le=10.0)
     cvss_vector: Optional[str] = None
     vuln_type: Optional[str] = None
@@ -76,25 +76,67 @@ class VulnerabilityCreate(_Base):
     days_since_last_scan: int = 0
 
 
+class ScannerFinding(_Base):
+    """Raw finding format ingested from scanner JSON or CSV."""
+    plugin_id: Optional[int] = None
+    cve_id: Optional[str] = None
+    title: str
+    severity: Literal["critical", "high", "medium", "low", "informational"] = "medium"
+    cvss_score: Optional[float] = Field(default=None, ge=0.0, le=10.0)
+    cvss_vector: Optional[str] = None
+    vuln_type: Optional[str] = None
+    host: Optional[str] = None
+    port: Optional[int] = None
+    service: Optional[str] = None
+    description: Optional[str] = None
+    solution: Optional[str] = None
+    exploit_available: bool = False
+    in_threat_feed: bool = False
+    auth_required: bool = False
+    attack_vector: Optional[str] = None
+    historical_recurrence: int = 0
+    days_since_last_scan: int = 0
+
+
 class VulnerabilityResponse(VulnerabilityCreate):
     id: int
+    asset_name: Optional[str] = None
+    asset_criticality: Optional[int] = None
+    asset_exposure: Optional[str] = None
     priority_score: Optional[float] = None
-    risk_tier: Optional[str] = None
+    risk_tier: Optional[Literal["Critical", "High", "Medium", "Low"]] = None
     is_remediated: bool
     discovered_at: datetime
     explainability: Optional[Dict[str, Any]] = None
 
 
 # ---------------------------------------------------------------------------
-# Scan upload payload
+# Scan upload payload (supports standard & raw scanner shapes)
 # ---------------------------------------------------------------------------
 
+class ScanMetadata(_Base):
+    scanner: Optional[str] = "Nessus / Generic Scanner"
+    scan_id: Optional[str] = None
+    scan_date: Optional[datetime] = None
+    policy: Optional[str] = None
+    target: Optional[str] = None
+
+
+class RawScanDocument(_Base):
+    """Raw scanner export shape: {scan_metadata: {...}, findings: [...]}"""
+    scan_metadata: Optional[ScanMetadata] = Field(default_factory=ScanMetadata)
+    findings: List[ScannerFinding]
+
+
 class ScanUploadPayload(_Base):
-    """Full scan import: metadata + list of findings."""
-    scanner_name: str
-    scan_date: datetime
+    """Legacy or custom wrapper shape."""
+    scanner_name: Optional[str] = None
+    scan_date: Optional[datetime] = None
     target_range: Optional[str] = None
-    vulnerabilities: List[VulnerabilityCreate]
+    vulnerabilities: Optional[List[ScannerFinding]] = None
+    # Support direct scanner document payload
+    scan_metadata: Optional[ScanMetadata] = None
+    findings: Optional[List[ScannerFinding]] = None
 
 
 class ScanUploadResponse(_Base):
@@ -111,20 +153,27 @@ class ScanUploadResponse(_Base):
 class ComparisonRow(_Base):
     vuln_id: int
     title: str
+    asset_name: str
+    risk_tier: str
     cvss_score: float
     cvss_rank: int
     ml_score: float
     ml_rank: int
-    delta: int              # ml_rank - cvss_rank  (negative = promoted by ML)
-    reason: str             # human-readable explanation of delta
+    delta: int              # ml_rank - cvss_rank (negative = promoted)
+    reason: str
 
 
 class ComparisonResponse(_Base):
     rows: List[ComparisonRow]
     total: int
-    promoted_count: int     # ML ranked higher than CVSS
-    demoted_count: int      # ML ranked lower than CVSS
+    promoted_count: int
+    demoted_count: int
     unchanged_count: int
+
+
+class FeatureImportanceItem(_Base):
+    feature: str
+    importance: float
 
 
 # ---------------------------------------------------------------------------
@@ -137,8 +186,12 @@ class DashboardStats(_Base):
     high_count: int
     medium_count: int
     low_count: int
+    critical_tier_count: int
+    high_tier_count: int
+    medium_tier_count: int
+    low_tier_count: int
     remediated_count: int
-    noise_deprioritized_pct: float          # % of medium/low with priority_score < 30
-    top_risks: List[VulnerabilityResponse]  # top 5 by priority_score
-    severity_distribution: Dict[str, int]  # {"critical": N, "high": N, ...}
-    risk_tier_distribution: Dict[str, int] # {"Critical": N, ...}
+    noise_deprioritized_pct: float
+    top_risks: List[VulnerabilityResponse]
+    severity_distribution: Dict[str, int]
+    risk_tier_distribution: Dict[str, int]

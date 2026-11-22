@@ -1,8 +1,5 @@
 """
 generate_synthetic_data.py — Generate synthetic VAPT scan data for model training.
-
-Generates 2,000+ realistic vulnerability records with technical and contextual features
-and computes ground-truth continuous priority_score (0-100) and risk_tier.
 """
 
 import argparse
@@ -11,13 +8,16 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from scoring_weights import (
+    WEIGHTS,
+    SCORE_MIN,
+    SCORE_MAX,
+    get_risk_tier,
+)
+
 logging.basicConfig(level=logging.INFO, format="%(levelname)s — %(message)s")
 logger = logging.getLogger(__name__)
 
-# Feature Encoding schema:
-# exposure_encoded: isolated=0, internal=1, dmz=2, internet-facing=3
-# vuln_type_encoded: other=0, xss=1, lfi=2, ssrf=3, sqli=4, rce=5
-# attack_vector_encoded: physical=0, local=1, adjacent=2, network=3
 
 def generate(n_samples: int = 2500, output_path: Path = None) -> pd.DataFrame:
     np.random.seed(42)
@@ -38,36 +38,23 @@ def generate(n_samples: int = 2500, output_path: Path = None) -> pd.DataFrame:
     historical_recurrence = np.random.choice([0, 1, 2, 3, 4, 5], size=n_samples, p=[0.45, 0.25, 0.15, 0.08, 0.05, 0.02])
     days_since_last_scan = np.random.randint(1, 180, size=n_samples)
 
-    # 3. Ground-truth Priority Calculation Formula:
-    # High impact on business risk combines CVSS + Asset Criticality + Exposure + Threat Intel + Recurrence
-    score = (
-        (cvss_score * 3.8) +
-        (cvss_impact * 2.2) +
-        (asset_criticality * 4.5) +
-        (exposure_encoded * 5.2) +
-        (exploit_available * 10.0) +
-        (in_threat_feed * 8.5) +
-        (attack_vector_encoded * 2.5) +
-        (historical_recurrence * 1.8) -
-        (auth_required * 4.0)
+    # 3. Ground-truth Priority Calculation Formula using shared constants:
+    raw_score = (
+        (cvss_score * WEIGHTS["cvss_score"])
+        + (cvss_impact * WEIGHTS["cvss_impact"])
+        + (asset_criticality * WEIGHTS["asset_criticality"])
+        + (exposure_encoded * WEIGHTS["exposure_encoded"])
+        + (exploit_available * WEIGHTS["exploit_available"])
+        + (in_threat_feed * WEIGHTS["in_threat_feed"])
+        + (attack_vector_encoded * WEIGHTS["attack_vector_encoded"])
+        + (historical_recurrence * WEIGHTS["historical_recurrence"])
+        - (auth_required * WEIGHTS["auth_required_penalty"])
     )
 
-    # Normalize to 0-100 range and add slight realistic noise
     noise = np.random.normal(0, 1.8, size=n_samples)
-    final_score = np.clip(np.round(score * 0.95 + noise, 1), 5.0, 99.8)
+    final_score = np.clip(np.round(raw_score * WEIGHTS["scaling_factor"] + noise, 1), SCORE_MIN, SCORE_MAX)
 
-    # Risk tiers matching backend thresholds
-    # Critical: >= 75.0, High: >= 50.0, Medium: >= 25.0, Low: < 25.0
-    risk_tier = []
-    for s in final_score:
-        if s >= 75.0:
-            risk_tier.append("Critical")
-        elif s >= 50.0:
-            risk_tier.append("High")
-        elif s >= 25.0:
-            risk_tier.append("Medium")
-        else:
-            risk_tier.append("Low")
+    risk_tiers = [get_risk_tier(s) for s in final_score]
 
     df = pd.DataFrame({
         "cvss_score": cvss_score,
@@ -83,16 +70,16 @@ def generate(n_samples: int = 2500, output_path: Path = None) -> pd.DataFrame:
         "historical_recurrence": historical_recurrence,
         "days_since_last_scan": days_since_last_scan,
         "priority_score": final_score,
-        "risk_tier": risk_tier
+        "risk_tier": risk_tiers,
     })
 
     if output_path:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         df.to_csv(output_path, index=False)
-        logger.info(f"Generated {len(df)} synthetic VAPT records -> {output_path}")
-        logger.info(f"Risk Tier Breakdown:\n{df['risk_tier'].value_counts().to_string()}")
+        logger.info("Generated %d synthetic VAPT records -> %s", len(df), output_path)
 
     return df
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate synthetic VAPT training data")

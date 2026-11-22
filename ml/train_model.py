@@ -1,11 +1,5 @@
 """
-train_model.py — Train GradientBoosting models for VAPT risk prioritization.
-
-Outputs:
-  - ml/artifacts/risk_regressor.pkl
-  - ml/artifacts/risk_classifier.pkl
-  - ml/artifacts/feature_names.json
-  - ml/artifacts/model_metadata.json
+train_model.py — Train GradientBoosting regressor pipeline for VAPT risk prioritization.
 """
 
 import json
@@ -14,8 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 import joblib
 import pandas as pd
-from sklearn.ensemble import GradientBoostingRegressor, GradientBoostingClassifier
-from sklearn.metrics import mean_squared_error, r2_score, accuracy_score, classification_report
+from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -43,6 +37,7 @@ FEATURE_COLS = [
     "days_since_last_scan",
 ]
 
+
 def train_and_save():
     ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -50,15 +45,14 @@ def train_and_save():
         logger.info("Dataset missing. Generating synthetic training data...")
         df = generate(n_samples=2500, output_path=DATA_PATH)
     else:
-        logger.info(f"Loading training data from {DATA_PATH}...")
+        logger.info("Loading training data from %s...", DATA_PATH)
         df = pd.read_csv(DATA_PATH)
 
     X = df[FEATURE_COLS]
     y_reg = df["priority_score"]
-    y_cls = df["risk_tier"]
 
-    X_train, X_test, y_reg_train, y_reg_test, y_cls_train, y_cls_test = train_test_split(
-        X, y_reg, y_cls, test_size=0.2, random_state=42
+    X_train, X_test, y_reg_train, y_reg_test = train_test_split(
+        X, y_reg, test_size=0.2, random_state=42
     )
 
     logger.info("Training Gradient Boosting Regressor (Priority Score 0-100)...")
@@ -67,39 +61,32 @@ def train_and_save():
         ("model", GradientBoostingRegressor(n_estimators=120, max_depth=4, learning_rate=0.08, random_state=42))
     ])
     regressor.fit(X_train, y_reg_train)
+
     reg_preds = regressor.predict(X_test)
-    mse = mean_squared_error(y_reg_test, reg_preds)
+    rmse = mean_squared_error(y_reg_test, reg_preds) ** 0.5
     r2 = r2_score(y_reg_test, reg_preds)
-    logger.info(f"Regressor performance: RMSE = {mse**0.5:.2f}, R2 = {r2:.4f}")
 
-    logger.info("Training Gradient Boosting Classifier (Risk Tier)...")
-    classifier = Pipeline([
-        ("scaler", StandardScaler()),
-        ("model", GradientBoostingClassifier(n_estimators=100, max_depth=3, learning_rate=0.1, random_state=42))
-    ])
-    classifier.fit(X_train, y_cls_train)
-    cls_preds = classifier.predict(X_test)
-    acc = accuracy_score(y_cls_test, cls_preds)
-    logger.info(f"Classifier Accuracy = {acc * 100:.2f}%")
-    logger.info("\n" + classification_report(y_cls_test, cls_preds))
+    # Compute classification proxy accuracy from regression predictions against test thresholds
+    from scoring_weights import get_risk_tier
+    actual_tiers = [get_risk_tier(s) for s in y_reg_test]
+    pred_tiers = [get_risk_tier(s) for s in reg_preds]
+    correct = sum(1 for a, p in zip(actual_tiers, pred_tiers) if a == p)
+    test_accuracy = round(correct / len(actual_tiers), 4)
 
-    # Extract feature importances from regressor
+    logger.info("Test evaluation: RMSE = %.3f, R2 = %.4f, Tier Accuracy = %.2f%%", rmse, r2, test_accuracy * 100)
+
+    # Feature importances
     gb_model = regressor.named_steps["model"]
     importances = {name: float(round(imp, 4)) for name, imp in zip(FEATURE_COLS, gb_model.feature_importances_)}
     sorted_importances = dict(sorted(importances.items(), key=lambda item: item[1], reverse=True))
 
-    # Set version attributes
     regressor._version = "1.0.0"
-    classifier._version = "1.0.0"
 
-    # Save artifacts
     reg_path = ARTIFACTS_DIR / "risk_regressor.pkl"
-    cls_path = ARTIFACTS_DIR / "risk_classifier.pkl"
     features_path = ARTIFACTS_DIR / "feature_names.json"
     metadata_path = ARTIFACTS_DIR / "model_metadata.json"
 
     joblib.dump(regressor, reg_path)
-    joblib.dump(classifier, cls_path)
 
     with open(features_path, "w", encoding="utf-8") as f:
         json.dump(FEATURE_COLS, f, indent=2)
@@ -108,17 +95,17 @@ def train_and_save():
         "version": "1.0.0",
         "trained_at": datetime.now(timezone.utc).isoformat(),
         "n_samples": len(df),
-        "test_rmse": round(mse**0.5, 3),
+        "test_rmse": round(rmse, 3),
         "test_r2": round(r2, 4),
-        "test_accuracy": round(acc, 4),
+        "test_accuracy": test_accuracy,
         "feature_importances": sorted_importances,
     }
 
     with open(metadata_path, "w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=2)
 
-    logger.info("Successfully exported ML models and metadata to ml/artifacts/")
-    logger.info(f"Top 5 Influential Features:\n{json.dumps(dict(list(sorted_importances.items())[:5]), indent=2)}")
+    logger.info("Exported model artifacts to %s", ARTIFACTS_DIR)
+
 
 if __name__ == "__main__":
     train_and_save()

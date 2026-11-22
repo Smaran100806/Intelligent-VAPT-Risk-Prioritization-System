@@ -27,7 +27,7 @@ export default function VulnerabilitiesPage() {
         assetsAPI.list()
       ]);
 
-      setVulns(vulnsRes.data.items || vulnsRes.data || []);
+      setVulns(Array.isArray(vulnsRes.data) ? vulnsRes.data : vulnsRes.data.items || []);
       setAssets(assetsRes.data || []);
     } catch (err) {
       console.error("Error fetching vulnerabilities:", err);
@@ -40,13 +40,8 @@ export default function VulnerabilitiesPage() {
     fetchData();
   }, [tierFilter, assetFilter, remediatedFilter]);
 
-  const handleRemediate = async (id) => {
-    try {
-      await vulnsAPI.remediate(id);
-      fetchData();
-    } catch (err) {
-      console.error("Error remediating vuln:", err);
-    }
+  const handleRemediate = async () => {
+    fetchData();
   };
 
   return (
@@ -122,17 +117,15 @@ export default function VulnerabilitiesPage() {
         />
       </div>
 
-      {/* Upload Modal */}
-      {isModalOpen && (
-        <ScanUploadModal
-          isOpen={isModalOpen}
-          onClose={() => setIsModalOpen(false)}
-          onUploadSuccess={() => {
-            setIsModalOpen(false);
-            fetchData();
-          }}
-        />
-      )}
+      {/* Upload Modal (Fixed prop names: open and onSuccess) */}
+      <ScanUploadModal
+        open={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSuccess={() => {
+          setIsModalOpen(false);
+          fetchData();
+        }}
+      />
     </div>
   );
 }

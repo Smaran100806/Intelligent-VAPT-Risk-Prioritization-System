@@ -1,6 +1,7 @@
 {
   "name": "vapt-frontend",
   "version": "0.1.0",
+  "type": "module",
   "private": true,
   "description": "React dashboard for the Intelligent VAPT Risk Prioritization System",
   "scripts": {

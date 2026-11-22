@@ -3,47 +3,20 @@ routers/dashboard.py — Dashboard statistics endpoint.
 """
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Vulnerability
-from app.schemas import DashboardStats, VulnerabilityResponse
+from app.routers.helpers import vuln_to_response
+from app.schemas import DashboardStats
 
 router = APIRouter()
 
 
-def _vuln_to_response(v: Vulnerability) -> VulnerabilityResponse:
-    return VulnerabilityResponse(
-        id=v.id,
-        scan_id=v.scan_id,
-        asset_id=v.asset_id,
-        cve_id=v.cve_id,
-        title=v.title,
-        description=v.description,
-        severity=v.severity,
-        cvss_score=v.cvss_score,
-        cvss_vector=v.cvss_vector,
-        vuln_type=v.vuln_type,
-        exploit_available=v.exploit_available,
-        in_threat_feed=v.in_threat_feed,
-        auth_required=v.auth_required,
-        attack_vector=v.attack_vector,
-        historical_recurrence=v.historical_recurrence,
-        days_since_last_scan=v.days_since_last_scan,
-        priority_score=v.priority_score,
-        risk_tier=v.risk_tier,
-        is_remediated=v.is_remediated,
-        discovered_at=v.discovered_at,
-        explainability=None,
-    )
-
-
 @router.get("", response_model=DashboardStats)
 def get_dashboard(db: Session = Depends(get_db)):
-    """
-    Aggregate statistics across all vulnerabilities for the dashboard.
-    """
+    """Aggregate statistics across all vulnerabilities."""
     all_vulns = db.execute(select(Vulnerability)).scalars().all()
 
     total_vulns = len(all_vulns)
@@ -51,9 +24,14 @@ def get_dashboard(db: Session = Depends(get_db)):
     high_count = sum(1 for v in all_vulns if v.severity == "high")
     medium_count = sum(1 for v in all_vulns if v.severity == "medium")
     low_count = sum(1 for v in all_vulns if v.severity in ("low", "informational"))
+
+    critical_tier_count = sum(1 for v in all_vulns if v.risk_tier == "Critical")
+    high_tier_count = sum(1 for v in all_vulns if v.risk_tier == "High")
+    medium_tier_count = sum(1 for v in all_vulns if v.risk_tier == "Medium")
+    low_tier_count = sum(1 for v in all_vulns if v.risk_tier == "Low")
+
     remediated_count = sum(1 for v in all_vulns if v.is_remediated)
 
-    # Noise deprioritisation: medium/low vulns with priority_score < 30
     noise_candidates = [
         v for v in all_vulns
         if v.severity in ("medium", "low", "informational")
@@ -66,27 +44,14 @@ def get_dashboard(db: Session = Depends(get_db)):
         else 0.0
     )
 
-    # Top 5 by priority_score
     top_risks_stmt = (
         select(Vulnerability)
-        .where(Vulnerability.is_remediated == False)  # noqa: E712
-        .order_by(Vulnerability.priority_score.desc().nullslast())
+        .where(Vulnerability.is_remediated == False)
+        .order_by(Vulnerability.priority_score.desc().nullslast(), Vulnerability.id.asc())
         .limit(5)
     )
-    top_risks = db.execute(top_risks_stmt).scalars().all()
-
-    severity_distribution = {
-        "critical": critical_count,
-        "high": high_count,
-        "medium": medium_count,
-        "low": low_count,
-    }
-
-    # Risk tier distribution
-    risk_tier_counts: dict[str, int] = {}
-    for v in all_vulns:
-        tier = v.risk_tier or "Unscored"
-        risk_tier_counts[tier] = risk_tier_counts.get(tier, 0) + 1
+    top_vulns = db.execute(top_risks_stmt).scalars().all()
+    top_risks = [vuln_to_response(v, include_explainability=False) for v in top_vulns]
 
     return DashboardStats(
         total_vulns=total_vulns,
@@ -94,9 +59,23 @@ def get_dashboard(db: Session = Depends(get_db)):
         high_count=high_count,
         medium_count=medium_count,
         low_count=low_count,
+        critical_tier_count=critical_tier_count,
+        high_tier_count=high_tier_count,
+        medium_tier_count=medium_tier_count,
+        low_tier_count=low_tier_count,
         remediated_count=remediated_count,
         noise_deprioritized_pct=noise_deprioritized_pct,
-        top_risks=[_vuln_to_response(v) for v in top_risks],
-        severity_distribution=severity_distribution,
-        risk_tier_distribution=risk_tier_counts,
+        top_risks=top_risks,
+        severity_distribution={
+            "Critical": critical_count,
+            "High": high_count,
+            "Medium": medium_count,
+            "Low": low_count,
+        },
+        risk_tier_distribution={
+            "Critical": critical_tier_count,
+            "High": high_tier_count,
+            "Medium": medium_tier_count,
+            "Low": low_tier_count,
+        },
     )

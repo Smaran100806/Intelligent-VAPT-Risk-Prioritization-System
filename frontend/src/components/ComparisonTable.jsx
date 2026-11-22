@@ -31,12 +31,13 @@ export default function ComparisonTable({ data = [] }) {
         </thead>
         <tbody>
           {data.map((row, idx) => {
-            const delta = (row.cvss_rank ?? idx + 1) - (row.ml_rank ?? idx + 1);
+            const delta = row.delta ?? (row.cvss_rank ?? idx + 1) - (row.ml_rank ?? idx + 1);
             const absDelta = Math.abs(delta);
-            const isHighlighted = absDelta > 2;
+            const isHighlighted = absDelta >= 2;
+
             return (
               <tr
-                key={idx}
+                key={row.vuln_id ?? idx}
                 className={`border-t border-gray-800 transition-colors ${
                   isHighlighted
                     ? "bg-yellow-900/20 hover:bg-yellow-900/30"
@@ -55,18 +56,18 @@ export default function ComparisonTable({ data = [] }) {
                   ) : delta > 0 ? (
                     <span
                       className={`font-bold ${
-                        absDelta > 2 ? "text-red-400" : "text-orange-400"
+                        absDelta >= 2 ? "text-red-400" : "text-orange-400"
                       }`}
-                      title="ML ranked higher (more urgent)"
+                      title="ML ranked higher (escalated priority)"
                     >
                       ↑{absDelta}
                     </span>
                   ) : (
                     <span
                       className={`font-bold ${
-                        absDelta > 2 ? "text-green-400" : "text-gray-400"
+                        absDelta >= 2 ? "text-green-400" : "text-gray-400"
                       }`}
-                      title="ML ranked lower (less urgent)"
+                      title="ML ranked lower (deprioritized noise)"
                     >
                       ↓{absDelta}
                     </span>
@@ -75,25 +76,25 @@ export default function ComparisonTable({ data = [] }) {
                 <td className="px-4 py-3 font-medium text-white max-w-xs">
                   <div className="flex items-center gap-2">
                     {isHighlighted && (
-                      <span title="Significant re-ranking" className="text-yellow-400 text-xs">⚠️</span>
+                      <span title="Significant triage re-alignment" className="text-yellow-400 text-xs">⚠️</span>
                     )}
-                    <span className="truncate">{row.title ?? row.name ?? "—"}</span>
+                    <span className="truncate">{row.title ?? "—"}</span>
                   </div>
                 </td>
                 <td className="px-4 py-3 text-gray-300 whitespace-nowrap text-xs">
-                  {row.asset_name ?? row.asset ?? "—"}
+                  {row.asset_name ?? "—"}
                 </td>
                 <td className="px-4 py-3 font-mono text-orange-400">
-                  {row.cvss_score != null ? row.cvss_score.toFixed(1) : "—"}
+                  {row.cvss_score != null ? Number(row.cvss_score).toFixed(1) : "—"}
                 </td>
                 <td className="px-4 py-3 font-mono font-bold text-blue-400">
-                  {row.ml_score != null ? row.ml_score.toFixed(1) : "—"}
+                  {row.ml_score != null ? Number(row.ml_score).toFixed(1) : "—"}
                 </td>
                 <td className="px-4 py-3">
-                  <RiskBadge tier={row.risk_tier ?? row.severity} />
+                  <RiskBadge tier={row.risk_tier} />
                 </td>
                 <td className="px-4 py-3 text-gray-400 text-xs max-w-xs">
-                  <span className="truncate block">{row.reason ?? "—"}</span>
+                  <span className="truncate block" title={row.reason}>{row.reason ?? "—"}</span>
                 </td>
               </tr>
             );

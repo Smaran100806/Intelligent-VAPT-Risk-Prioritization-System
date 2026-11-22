@@ -1,14 +1,17 @@
 """
-routers/comparison.py — CVSS vs ML ranking comparison endpoint.
+routers/comparison.py — CVSS vs ML ranking comparison and feature importance endpoints.
 """
+
+from typing import List
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.ml_service import get_model_metadata
 from app.models import Scan, Vulnerability
-from app.schemas import ComparisonResponse, ComparisonRow
+from app.schemas import ComparisonResponse, ComparisonRow, FeatureImportanceItem
 
 router = APIRouter()
 
@@ -16,14 +19,10 @@ router = APIRouter()
 @router.get("/cvss-vs-ml", response_model=ComparisonResponse)
 def cvss_vs_ml_comparison(db: Session = Depends(get_db)):
     """
-    Compare CVSS-based ranking with ML priority_score ranking for the
-    most recent scan's findings.
-
-    Returns each finding's rank in both orderings plus a delta that
-    highlights promotions (ML ranks it more urgent) or demotions.
+    Compare CVSS ranking with ML priority_score ranking for the most recent scan.
+    Breaks ties deterministically using vuln_id.
     """
-    # Identify the most recent scan
-    last_scan_stmt = select(Scan).order_by(Scan.scan_date.desc()).limit(1)
+    last_scan_stmt = select(Scan).order_by(Scan.scan_date.desc(), Scan.id.desc()).limit(1)
     last_scan = db.execute(last_scan_stmt).scalar_one_or_none()
 
     if last_scan is None:
@@ -35,10 +34,9 @@ def cvss_vs_ml_comparison(db: Session = Depends(get_db)):
             unchanged_count=0,
         )
 
-    # Fetch all non-remediated findings for that scan that have scores
     stmt = select(Vulnerability).where(
         Vulnerability.scan_id == last_scan.id,
-        Vulnerability.is_remediated == False,  # noqa: E712
+        Vulnerability.is_remediated == False,
     )
     vulns = db.execute(stmt).scalars().all()
 
@@ -51,55 +49,74 @@ def cvss_vs_ml_comparison(db: Session = Depends(get_db)):
             unchanged_count=0,
         )
 
-    # Sort by CVSS desc → rank
-    cvss_sorted = sorted(vulns, key=lambda v: (v.cvss_score or 0.0), reverse=True)
+    # Sort ties deterministically by primary score desc, vuln.id asc
+    cvss_sorted = sorted(
+        vulns,
+        key=lambda v: (-(v.cvss_score or 0.0), v.id),
+    )
     cvss_rank_map = {v.id: idx + 1 for idx, v in enumerate(cvss_sorted)}
 
-    # Sort by ML priority_score desc → rank
-    ml_sorted = sorted(vulns, key=lambda v: (v.priority_score or 0.0), reverse=True)
+    ml_sorted = sorted(
+        vulns,
+        key=lambda v: (-(v.priority_score or 0.0), v.id),
+    )
     ml_rank_map = {v.id: idx + 1 for idx, v in enumerate(ml_sorted)}
 
-    rows: list[ComparisonRow] = []
+    rows: List[ComparisonRow] = []
     promoted = 0
     demoted = 0
     unchanged = 0
 
-    for v in cvss_sorted:
+    for v in ml_sorted:
         cvss_rank = cvss_rank_map[v.id]
         ml_rank = ml_rank_map[v.id]
-        delta = ml_rank - cvss_rank  # negative = ML promotes it higher
+        delta = cvss_rank - ml_rank  # positive = ML escalated higher
 
-        if delta < 0:
+        reasons = []
+        asset = v.asset
+        exposure = asset.exposure if asset else "internal"
+        criticality = asset.criticality if asset else 3
+
+        if exposure == "internet-facing":
+            reasons.append("Internet-facing perimeter")
+        elif exposure == "isolated":
+            reasons.append("Isolated sandbox")
+
+        if criticality >= 4:
+            reasons.append(f"Mission-critical tier ({criticality}/5)")
+        elif criticality <= 2:
+            reasons.append("Low-criticality asset")
+
+        if v.exploit_available:
+            reasons.append("Public weaponized exploit")
+        if v.in_threat_feed:
+            reasons.append("Active threat intel signal")
+        if v.auth_required:
+            reasons.append("Auth barrier required")
+
+        reason_text = " • ".join(reasons) if reasons else "Balanced contextual baseline"
+
+        if delta > 0:
             promoted += 1
-            reason = (
-                f"ML promotes this finding {abs(delta)} position(s) higher than CVSS alone "
-                f"due to contextual factors (asset criticality, exploit availability, threat feeds)."
-            )
-        elif delta > 0:
+        elif delta < 0:
             demoted += 1
-            reason = (
-                f"ML de-prioritises this finding {delta} position(s) lower than CVSS suggests "
-                f"(e.g. low asset criticality, no active exploit, isolated exposure)."
-            )
         else:
             unchanged += 1
-            reason = "ML ranking agrees with CVSS ranking for this finding."
 
         rows.append(
             ComparisonRow(
                 vuln_id=v.id,
                 title=v.title,
-                cvss_score=v.cvss_score or 0.0,
+                asset_name=asset.name if asset else "Unassigned",
+                risk_tier=v.risk_tier or "Medium",
+                cvss_score=float(v.cvss_score or 0.0),
                 cvss_rank=cvss_rank,
-                ml_score=v.priority_score or 0.0,
+                ml_score=float(v.priority_score or 0.0),
                 ml_rank=ml_rank,
                 delta=delta,
-                reason=reason,
+                reason=reason_text,
             )
         )
-
-    # Return rows ordered by ML rank for the UI
-    rows.sort(key=lambda r: r.ml_rank)
 
     return ComparisonResponse(
         rows=rows,
@@ -108,3 +125,12 @@ def cvss_vs_ml_comparison(db: Session = Depends(get_db)):
         demoted_count=demoted,
         unchanged_count=unchanged,
     )
+
+
+@router.get("/feature-importance", response_model=List[FeatureImportanceItem])
+def get_feature_importance():
+    """Returns global feature importances sorted descending."""
+    metadata = get_model_metadata()
+    importances = metadata.get("feature_importances", {})
+    sorted_items = sorted(importances.items(), key=lambda x: x[1], reverse=True)
+    return [FeatureImportanceItem(feature=k, importance=float(v)) for k, v in sorted_items]

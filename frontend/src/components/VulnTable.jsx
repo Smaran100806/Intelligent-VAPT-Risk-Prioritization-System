@@ -1,17 +1,17 @@
-import { useState, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 import RiskBadge from "./RiskBadge.jsx";
 import ExplainBadge from "./ExplainBadge.jsx";
 import { vulnsAPI } from "../services/api.js";
 
 const COLUMNS = [
-  { key: "rank",          label: "#",          sortable: false },
-  { key: "title",         label: "Title",      sortable: true },
-  { key: "asset_name",    label: "Asset",      sortable: true },
-  { key: "cvss_score",    label: "CVSS",       sortable: true },
-  { key: "ml_score",      label: "ML Score",   sortable: true },
-  { key: "risk_tier",     label: "Risk Tier",  sortable: true },
-  { key: "exploit",       label: "Exploit",    sortable: false },
-  { key: "actions",       label: "Actions",    sortable: false },
+  { key: "rank",           label: "#",          sortable: false },
+  { key: "title",          label: "Title",      sortable: true },
+  { key: "asset_name",     label: "Asset",      sortable: true },
+  { key: "cvss_score",     label: "CVSS",       sortable: true },
+  { key: "priority_score", label: "ML Score",   sortable: true },
+  { key: "risk_tier",      label: "Risk Tier",  sortable: true },
+  { key: "exploit",        label: "Exploit",    sortable: false },
+  { key: "actions",        label: "Actions",    sortable: false },
 ];
 
 function SortIcon({ direction }) {
@@ -21,24 +21,31 @@ function SortIcon({ direction }) {
 
 /**
  * VulnTable — sortable vulnerability table.
- * @param {{ vulns: Array, onRemediate: Function, loading: boolean }} props
+ * @param {{ vulnerabilities: Array, onRemediate: Function, isLoading: boolean }} props
  */
-export default function VulnTable({ vulns = [], onRemediate, loading = false }) {
-  const [sortKey, setSortKey] = useState("ml_score");
+export default function VulnTable({
+  vulnerabilities = [],
+  onRemediate,
+  isLoading = false,
+}) {
+  const [sortKey, setSortKey] = useState("priority_score");
   const [sortDir, setSortDir] = useState("desc");
   const [expandedId, setExpandedId] = useState(null);
   const [remediating, setRemediating] = useState(null);
 
-  const handleSort = useCallback((key) => {
-    if (sortKey === key) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(key);
-      setSortDir("desc");
-    }
-  }, [sortKey]);
+  const handleSort = useCallback(
+    (key) => {
+      if (sortKey === key) {
+        setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+      } else {
+        setSortKey(key);
+        setSortDir("desc");
+      }
+    },
+    [sortKey]
+  );
 
-  const sorted = [...vulns].sort((a, b) => {
+  const sorted = [...vulnerabilities].sort((a, b) => {
     const av = a[sortKey] ?? "";
     const bv = b[sortKey] ?? "";
     if (typeof av === "number" && typeof bv === "number") {
@@ -53,7 +60,7 @@ export default function VulnTable({ vulns = [], onRemediate, loading = false }) 
     setRemediating(id);
     try {
       await vulnsAPI.remediate(id);
-      onRemediate?.();
+      onRemediate?.(id);
     } catch (err) {
       console.error("Remediate failed", err);
     } finally {
@@ -61,7 +68,7 @@ export default function VulnTable({ vulns = [], onRemediate, loading = false }) 
     }
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center h-40 text-gray-500">
         <span className="animate-spin text-2xl mr-3">⟳</span> Loading vulnerabilities…
@@ -69,7 +76,7 @@ export default function VulnTable({ vulns = [], onRemediate, loading = false }) 
     );
   }
 
-  if (vulns.length === 0) {
+  if (vulnerabilities.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-40 text-gray-500 gap-2">
         <span className="text-4xl">🎉</span>
@@ -101,12 +108,13 @@ export default function VulnTable({ vulns = [], onRemediate, loading = false }) 
         </thead>
         <tbody>
           {sorted.map((vuln, idx) => {
-            const isExpanded = expandedId === (vuln.id ?? vuln._id);
-            const isRemediated = vuln.remediated === true;
+            const vulnId = vuln.id ?? vuln._id ?? idx;
+            const isExpanded = expandedId === vulnId;
+            const isRemediated = vuln.is_remediated === true;
+
             return (
-              <>
+              <React.Fragment key={vulnId}>
                 <tr
-                  key={vuln.id ?? vuln._id ?? idx}
                   className={`border-t border-gray-800 transition-colors ${
                     isRemediated
                       ? "opacity-50 bg-gray-900/40"
@@ -116,14 +124,14 @@ export default function VulnTable({ vulns = [], onRemediate, loading = false }) 
                   <td className="px-4 py-3 text-gray-500 font-mono">{idx + 1}</td>
                   <td className="px-4 py-3 font-medium text-white max-w-xs">
                     <div className="flex items-center gap-2">
-                      <span className="truncate">{vuln.title ?? vuln.name ?? "—"}</span>
-                      {vuln.score_factors && (
-                        <ExplainBadge factors={vuln.score_factors} />
+                      <span className="truncate">{vuln.title ?? "—"}</span>
+                      {vuln.explainability && (
+                        <ExplainBadge factors={vuln.explainability} />
                       )}
                     </div>
                   </td>
                   <td className="px-4 py-3 text-gray-300 whitespace-nowrap">
-                    {vuln.asset_name ?? vuln.asset ?? "—"}
+                    {vuln.asset_name ?? "—"}
                   </td>
                   <td className="px-4 py-3">
                     <span
@@ -137,12 +145,12 @@ export default function VulnTable({ vulns = [], onRemediate, loading = false }) 
                           : "text-green-400"
                       }`}
                     >
-                      {vuln.cvss_score != null ? vuln.cvss_score.toFixed(1) : "—"}
+                      {vuln.cvss_score != null ? Number(vuln.cvss_score).toFixed(1) : "—"}
                     </span>
                   </td>
                   <td className="px-4 py-3">
                     <span className="font-mono font-bold text-blue-400">
-                      {vuln.ml_score != null ? vuln.ml_score.toFixed(1) : "—"}
+                      {vuln.priority_score != null ? Number(vuln.priority_score).toFixed(1) : "—"}
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -158,20 +166,18 @@ export default function VulnTable({ vulns = [], onRemediate, loading = false }) 
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() =>
-                          setExpandedId(isExpanded ? null : (vuln.id ?? vuln._id))
-                        }
+                        onClick={() => setExpandedId(isExpanded ? null : vulnId)}
                         className="px-2 py-1 text-xs rounded bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
                       >
                         {isExpanded ? "▲ Hide" : "▼ Details"}
                       </button>
                       {!isRemediated && (
                         <button
-                          disabled={remediating === (vuln.id ?? vuln._id)}
-                          onClick={() => handleRemediate(vuln.id ?? vuln._id)}
+                          disabled={remediating === vulnId}
+                          onClick={() => handleRemediate(vulnId)}
                           className="px-2 py-1 text-xs rounded bg-green-800 text-green-300 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
-                          {remediating === (vuln.id ?? vuln._id) ? "…" : "✓ Fix"}
+                          {remediating === vulnId ? "…" : "✓ Fix"}
                         </button>
                       )}
                       {isRemediated && (
@@ -183,34 +189,44 @@ export default function VulnTable({ vulns = [], onRemediate, loading = false }) 
                   </td>
                 </tr>
                 {isExpanded && (
-                  <tr key={`exp-${vuln.id ?? vuln._id ?? idx}`} className="border-t border-gray-800 bg-gray-900/60">
+                  <tr className="border-t border-gray-800 bg-gray-900/60">
                     <td colSpan={8} className="px-6 py-4">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                         <div>
                           <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Description</p>
                           <p className="text-gray-300">{vuln.description ?? "No description available."}</p>
+                          {vuln.asset_exposure && (
+                            <p className="text-xs text-indigo-300 mt-2">
+                              Target Exposure: <strong className="capitalize">{vuln.asset_exposure}</strong> (Criticality: {vuln.asset_criticality ?? 3}/5)
+                            </p>
+                          )}
                         </div>
                         <div>
-                          <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Score Factors</p>
-                          {vuln.score_factors ? (
-                            <div className="flex flex-wrap gap-1.5">
-                              {Object.entries(vuln.score_factors)
-                                .filter(([, v]) => v !== 0)
-                                .map(([k, v]) => (
-                                  <span
-                                    key={k}
-                                    className={`px-2 py-0.5 rounded text-xs font-medium ${
-                                      v > 0
-                                        ? "bg-red-900/60 text-red-300"
-                                        : "bg-green-900/60 text-green-300"
-                                    }`}
-                                  >
-                                    {k.replace(/_/g, " ")}: {v > 0 ? `+${v}` : v}
-                                  </span>
-                                ))}
+                          <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Explainability Vector</p>
+                          {vuln.explainability ? (
+                            <div className="space-y-1">
+                              {vuln.explainability.note && (
+                                <p className="text-[11px] text-gray-400 italic mb-1">{vuln.explainability.note}</p>
+                              )}
+                              <div className="flex flex-wrap gap-1.5">
+                                {Object.entries(vuln.explainability)
+                                  .filter(([k, v]) => k !== "note" && typeof v === "number" && v !== 0)
+                                  .map(([k, v]) => (
+                                    <span
+                                      key={k}
+                                      className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                        v > 0
+                                          ? "bg-red-900/60 text-red-300"
+                                          : "bg-green-900/60 text-green-300"
+                                      }`}
+                                    >
+                                      {k.replace(/_/g, " ")}: {v > 0 ? `+${v}` : v}
+                                    </span>
+                                  ))}
+                              </div>
                             </div>
                           ) : (
-                            <p className="text-gray-500">No factor data.</p>
+                            <p className="text-gray-500 text-xs">Full factor attribution available on detail inspection.</p>
                           )}
                         </div>
                         {vuln.cve_id && (
@@ -226,17 +242,17 @@ export default function VulnTable({ vulns = [], onRemediate, loading = false }) 
                             </a>
                           </div>
                         )}
-                        {vuln.remediation && (
+                        {vuln.solution && (
                           <div>
-                            <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Remediation</p>
-                            <p className="text-gray-300">{vuln.remediation}</p>
+                            <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Solution</p>
+                            <p className="text-gray-300">{vuln.solution}</p>
                           </div>
                         )}
                       </div>
                     </td>
                   </tr>
                 )}
-              </>
+              </React.Fragment>
             );
           })}
         </tbody>
