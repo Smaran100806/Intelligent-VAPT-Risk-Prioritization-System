@@ -16,14 +16,9 @@ build/
 .env.*
 *.env
 
-# Databases & ML artifacts
+# Databases & local sqlite
 *.db
 *.sqlite3
-*.pkl
-*.pickle
-ml/artifacts/*.pkl
-ml/artifacts/*.joblib
-ml/artifacts/*.model
 
 # Node / Frontend
 node_modules/
